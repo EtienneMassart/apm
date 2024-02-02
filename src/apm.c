@@ -45,7 +45,7 @@ char *read_input_file(char *filename, int *size) {
     /* Allocate data to copy the target text */
     buf = (char *)malloc(fsize * sizeof(char));
     if (buf == NULL) {
-        fprintf(stderr, "Unable to allocate %lld byte(s) for main array\n",
+        fprintf(stderr, "Unable to allocate %ld byte(s) for main array\n",
                 fsize);
         return NULL;
     }
@@ -54,7 +54,7 @@ char *read_input_file(char *filename, int *size) {
     if (n_bytes != fsize) {
         fprintf(
             stderr,
-            "Unable to copy %lld byte(s) from text file (%d byte(s) copied)\n",
+            "Unable to copy %ld byte(s) from text file (%d byte(s) copied)\n",
             fsize, n_bytes);
         return NULL;
     }
@@ -103,6 +103,12 @@ int main(int argc, char **argv) {
     double duration;
     int n_bytes;
     int *n_matches;
+    int rank, size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    int * distribution = (int *)malloc(size * sizeof(int));
 
     /* Check number of arguments */
     if (argc < 4) {
@@ -175,6 +181,18 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
     /* Check each pattern one by one */
+    if (rank == 0) {
+        for (i = 0; i < nb_patterns % size ; i++) {
+            distribution[i] = n_bytes / size;
+        }
+        for (i = nb_patterns % size; i < size; i++) {
+            distribution[i] = n_bytes / size + 1;
+        }
+    }
+    MPI_Bcast(distribution, size, MPI_INT, 0, MPI_COMM_WORLD);
+    for (i = 0; i < size; i++) {
+        printf("tableau envoyé au rank %d = %d", rank, distribution[i]);
+    }
     for (i = 0; i < nb_patterns; i++) {
         int size_pattern = strlen(pattern[i]);
         int *column;
