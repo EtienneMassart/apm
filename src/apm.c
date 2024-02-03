@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <mpi.h>
 
 #define APM_DEBUG 0
 
@@ -104,11 +105,11 @@ int main(int argc, char **argv) {
     int n_bytes;
     int *n_matches;
     int rank, size;
+    int ppp; // pattern per process
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    int * distribution = (int *)malloc(size * sizeof(int));
 
     /* Check number of arguments */
     if (argc < 4) {
@@ -180,21 +181,57 @@ int main(int argc, char **argv) {
     /* Timer start */
     gettimeofday(&t1, NULL);
 
-    /* Check each pattern one by one */
+    /* Distribution des paterns entre les process */
+    if (nb_patterns % size != 0) {
+        ppp = (nb_patterns / size) + 1;
+    }
+    else {
+        ppp = nb_patterns / size;
+    }
+
+    int * distribution = (int *)malloc(size * ppp * sizeof(int)); // contient les numéros des paterns
+    int * reception = (int *)malloc(ppp * sizeof(int));
+    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
+    int * displs = (int *)malloc(size * sizeof(int));
+
+    /* Répartition du nombre de patterns entre les process 
+    Peut être amélioré en prenant en compte la taille des paterns */
+    i = 0;
+    if (nb_patterns % size != 0) {
+        while (i < nb_patterns % size ) {
+            sendcounts[i] = ppp;
+            i++;
+        }
+        while (i < size) {
+            sendcounts[i] = ppp - 1;
+            i++;
+        }
+    }
+    else {
+        while (i < size) {
+            sendcounts[i] = ppp;
+            i++;
+        }
+    }
+
     if (rank == 0) {
-        for (i = 0; i < nb_patterns % size ; i++) {
-            distribution[i] = n_bytes / size;
+        for (i = 0; i<nb_patterns; i++) {
+            distribution[i] = i;
         }
-        for (i = nb_patterns % size; i < size; i++) {
-            distribution[i] = n_bytes / size + 1;
+        displs[0] = 0; 
+        for (i = 1; i < size; i++) {
+            displs[i] = displs [i-1] + sendcounts[i-1];
         }
     }
-    MPI_Bcast(distribution, size, MPI_INT, 0, MPI_COMM_WORLD);
-    for (i = 0; i < size; i++) {
-        printf("tableau envoyé au rank %d = %d", rank, distribution[i]);
+    MPI_Scatterv(distribution, sendcounts, displs, MPI_INT, reception, sendcounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
+#if APM_DEBUG
+    for (i = 0; i < sendcounts[rank]; i++) {
+        printf("tableau[%d] envoyé au rank %d = %d\n", i, rank, reception[i]);
     }
-    for (i = 0; i < nb_patterns; i++) {
-        int size_pattern = strlen(pattern[i]);
+#endif
+    /* Check each pattern one by one */
+    for (i = 0; i < sendcounts[rank]; i++) {
+        int size_pattern = strlen(pattern[reception[i]]);
         int *column;
 
         /* Initialize the number of matches to 0 */
@@ -224,7 +261,7 @@ int main(int argc, char **argv) {
                 size = n_bytes - j;
             }
 
-            distance = levenshtein(pattern[i], &buf[j], size, column);
+            distance = levenshtein(pattern[reception[i]], &buf[j], size, column);
 
             if (distance <= approx_factor) {
                 n_matches[i]++;
@@ -245,10 +282,12 @@ int main(int argc, char **argv) {
      * END MAIN LOOP
      ******/
 
-    for (i = 0; i < nb_patterns; i++) {
-        printf("Number of matches for pattern <%s>: %d\n", pattern[i],
+    for (i = 0; i < sendcounts[rank]; i++) {
+        printf("Number of matches for pattern <%s>: %d\n", pattern[reception[i]],
                n_matches[i]);
     }
+
+    MPI_Finalize();
 
     return 0;
 }
