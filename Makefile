@@ -2,8 +2,8 @@ SRC_DIR=src
 HEADER_DIR=include
 OBJ_DIR=obj
 
-CC=gcc
-CFLAGS=-O3 -I$(HEADER_DIR) -Wall
+CC=gcc 
+CFLAGS=-O3 -I$(HEADER_DIR) -Wall -fopenmp
 LDFLAGS=
 
 SRC= apm.c

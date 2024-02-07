@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <omp.h>
 
 #define APM_DEBUG 0
 
@@ -45,7 +46,7 @@ char *read_input_file(char *filename, int *size) {
     /* Allocate data to copy the target text */
     buf = (char *)malloc(fsize * sizeof(char));
     if (buf == NULL) {
-        fprintf(stderr, "Unable to allocate %lld byte(s) for main array\n",
+        fprintf(stderr, "Unable to allocate %ld byte(s) for main array\n",
                 fsize);
         return NULL;
     }
@@ -54,7 +55,7 @@ char *read_input_file(char *filename, int *size) {
     if (n_bytes != fsize) {
         fprintf(
             stderr,
-            "Unable to copy %lld byte(s) from text file (%d byte(s) copied)\n",
+            "Unable to copy %ld byte(s) from text file (%d byte(s) copied)\n",
             fsize, n_bytes);
         return NULL;
     }
@@ -175,7 +176,9 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
     /* Check each pattern one by one */
+#pragma omp parallel for
     for (i = 0; i < nb_patterns; i++) {
+        // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
         int size_pattern = strlen(pattern[i]);
         int *column;
 
@@ -183,12 +186,12 @@ int main(int argc, char **argv) {
         n_matches[i] = 0;
 
         column = (int *)malloc((size_pattern + 1) * sizeof(int));
-        if (column == NULL) {
-            fprintf(stderr,
-                    "Error: unable to allocate memory for column (%ldB)\n",
-                    (size_pattern + 1) * sizeof(int));
-            return 1;
-        }
+        // if (column == NULL) {
+        //     fprintf(stderr,
+        //             "Error: unable to allocate memory for column (%ldB)\n",
+        //             (size_pattern + 1) * sizeof(int));
+        //     return 1;
+        // }
 
         /* Traverse the input data up to the end of the file */
         for (j = 0; j < n_bytes; j++) {
