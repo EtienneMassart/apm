@@ -10,8 +10,10 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <mpi.h>
+#include <assert.h>
 
 #define APM_DEBUG 0
+#define ETIENNE_DEBUG 0
 
 char *read_input_file(char *filename, int *size) {
     char *buf;
@@ -34,7 +36,7 @@ char *read_input_file(char *filename, int *size) {
     }
 
 #if APM_DEBUG
-    printf("File length: %lld\n", fsize);
+    printf("File length: %ld\n", fsize);
 #endif
 
     /* Go back to the beginning of the input file */
@@ -96,8 +98,10 @@ int levenshtein(char *s1, char *s2, int len, int *column) {
 int main(int argc, char **argv) {
     char **pattern;
     char *filename;
+    int *pattern_len_squared; // tableau contenant la taille au carré de chaque patern
     int approx_factor = 0;
     int nb_patterns = 0;
+    int sum_len_squared = 0; // somme des tailles au carré des paterns
     int i, j;
     char *buf;
     struct timeval t1, t2;
@@ -105,7 +109,6 @@ int main(int argc, char **argv) {
     int n_bytes;
     int *n_matches;
     int rank, size;
-    int ppp; // pattern per process
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -137,6 +140,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+
+    pattern_len_squared = (int *)malloc(nb_patterns * sizeof(int));
+
     /* Grab the patterns */
     for (i = 0; i < nb_patterns; i++) {
         int l;
@@ -146,6 +152,11 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Error while parsing argument %d\n", i + 3);
             return 1;
         }
+        
+        // Remplissage du tableau pattern_size_squared et calcul de la somme des tailles au carré des paterns
+        pattern_len_squared[i] = l * l;
+        sum_len_squared += pattern_len_squared[i];
+
 
         pattern[i] = (char *)malloc((l + 1) * sizeof(char));
         if (pattern[i] == NULL) {
@@ -155,6 +166,8 @@ int main(int argc, char **argv) {
 
         strncpy(pattern[i], argv[i + 3], (l + 1));
     }
+
+    int sls_by_process = sum_len_squared / size;
 
     printf(
         "Approximate Pattern Mathing: "
@@ -181,50 +194,77 @@ int main(int argc, char **argv) {
     /* Timer start */
     gettimeofday(&t1, NULL);
 
-    /* Distribution des paterns entre les process */
-    if (nb_patterns % size != 0) {
-        ppp = (nb_patterns / size) + 1;
-    }
-    else {
-        ppp = nb_patterns / size;
-    }
 
-    int * distribution = (int *)malloc(size * ppp * sizeof(int)); // contient les numéros des paterns
-    int * reception = (int *)malloc(ppp * sizeof(int));
+    int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
     int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
     int * displs = (int *)malloc(size * sizeof(int));
 
     /* Répartition du nombre de patterns entre les process 
     Peut être amélioré en prenant en compte la taille des paterns */
-    i = 0;
-    if (nb_patterns % size != 0) {
-        while (i < nb_patterns % size ) {
-            sendcounts[i] = ppp;
-            i++;
+
+    int count_squared_len = 0;
+    displs[0] = 0;
+    j = 0; // j est le numéro du process
+
+    int max_receive = 0;
+
+    for (i = 0; i < nb_patterns; i++) {
+        distribution[i] = i;
+        assert (j < size), "N'a pas réparti tous les patterns entre les process\n";
+        count_squared_len += pattern_len_squared[i];
+
+#if ETIENNE_DEBUG
+        if (rank == 0) {
+            printf("count_squared_len = %d after pattern %d\n", count_squared_len, i);
         }
-        while (i < size) {
-            sendcounts[i] = ppp - 1;
-            i++;
+#endif
+
+        if (count_squared_len > sls_by_process * (j + 1) || i == nb_patterns - 1){
+            sendcounts[j] = i + 1  - displs[j];
+            if (sendcounts[j] > max_receive) {
+                max_receive = sendcounts[j];
+            }
+            if (j < size - 1) {
+                displs[j+1] = i+1;
+            }
+
+#if ETIENNE_DEBUG
+            if (rank == 0) {
+                printf("sent patterns %d to %d to process %d\n", displs[j], i+1, j);
+            }     
+#endif
+            j++;
+
         }
-    }
-    else {
-        while (i < size) {
-            sendcounts[i] = ppp;
-            i++;
+
+        /* 
+        * En gros si on a un gros pattern qui fait beaucoup grandir la somme des carres, on le met tout seul dans un process et on met rien dans les process suivants
+        * Il faut remplacer "ne rien mettre" par "couper le gros pattern en plusieurs morceaux et les mettre dans les process suivants" 
+        */
+        while (count_squared_len > sls_by_process * (j + 1) && j < size - 1) {
+#if ETIENNE_DEBUG
+            if (rank == 0) {
+                printf("sent 0 patterns to process %d\n", j);
+            }
+#endif
+            sendcounts[j] = 0;
+            displs[j+1] = i+1;
+            j++;
         }
     }
 
+    int * reception = (int *)malloc(max_receive * sizeof(int));
+
     if (rank == 0) {
-        for (i = 0; i<nb_patterns; i++) {
-            distribution[i] = i;
-        }
-        displs[0] = 0; 
-        for (i = 1; i < size; i++) {
-            displs[i] = displs [i-1] + sendcounts[i-1];
+        for (i = 0; i < size; i++) {
+            printf("sendcounts[%d] = %d\n", i, sendcounts[i]);
+            printf("displs[%d] = %d\n", i, displs[i]);
         }
     }
+
+
     MPI_Scatterv(distribution, sendcounts, displs, MPI_INT, reception, sendcounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
-#if APM_DEBUG
+#if ETIENNE_DEBUG
     for (i = 0; i < sendcounts[rank]; i++) {
         printf("tableau[%d] envoyé au rank %d = %d\n", i, rank, reception[i]);
     }
