@@ -73,6 +73,20 @@ char *read_input_file(char *filename, int *size) {
     return buf;
 }
 
+int compare(const void *a, const void *b) {
+    int la = strlen(*(const char **)a);
+    int lb = strlen(*(const char **)b);
+    if (la < lb) {
+        return 1;
+    } else if (la > lb) {
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+
+
 #define MIN3(a, b, c) \
     ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
 
@@ -153,11 +167,6 @@ int main(int argc, char **argv) {
             return 1;
         }
         
-        // Remplissage du tableau pattern_size_squared et calcul de la somme des tailles au carré des paterns
-        pattern_len_squared[i] = l * l;
-        sum_len_squared += pattern_len_squared[i];
-
-
         pattern[i] = (char *)malloc((l + 1) * sizeof(char));
         if (pattern[i] == NULL) {
             fprintf(stderr, "Unable to allocate string of size %d\n", l);
@@ -167,12 +176,24 @@ int main(int argc, char **argv) {
         strncpy(pattern[i], argv[i + 3], (l + 1));
     }
 
+    /* Sort patterns by length in decreasing order*/
+    
+    qsort(pattern, nb_patterns, sizeof(char *), compare);
+
+    /* Compute the sum of the length squared of each pattern */
+    for (i = 0; i < nb_patterns; i++) {
+        pattern_len_squared[i] = strlen(pattern[i]) * strlen(pattern[i]);
+        sum_len_squared += pattern_len_squared[i];
+    }
+
     int sls_by_process = sum_len_squared / size;
 
-    printf(
-        "Approximate Pattern Mathing: "
-        "looking for %d pattern(s) in file %s w/ distance of %d\n",
-        nb_patterns, filename, approx_factor);
+    if (rank == 0) {
+        printf(
+            "Approximate Pattern Mathing: "
+            "looking for %d pattern(s) in file %s w/ distance of %d\n",
+            nb_patterns, filename, approx_factor);
+    }
 
     buf = read_input_file(filename, &n_bytes);
     if (buf == NULL) {
@@ -213,12 +234,6 @@ int main(int argc, char **argv) {
         assert (j < size), "N'a pas réparti tous les patterns entre les process\n";
         count_squared_len += pattern_len_squared[i];
 
-#if ETIENNE_DEBUG
-        if (rank == 0) {
-            printf("count_squared_len = %d after pattern %d\n", count_squared_len, i);
-        }
-#endif
-
         if (count_squared_len > sls_by_process * (j + 1) || i == nb_patterns - 1){
             sendcounts[j] = i + 1  - displs[j];
             if (sendcounts[j] > max_receive) {
@@ -227,26 +242,11 @@ int main(int argc, char **argv) {
             if (j < size - 1) {
                 displs[j+1] = i+1;
             }
-
-#if ETIENNE_DEBUG
-            if (rank == 0) {
-                printf("sent patterns %d to %d to process %d\n", displs[j], i+1, j);
-            }     
-#endif
             j++;
-
         }
-
-        /* 
-        * En gros si on a un gros pattern qui fait beaucoup grandir la somme des carres, on le met tout seul dans un process et on met rien dans les process suivants
-        * Il faut remplacer "ne rien mettre" par "couper le gros pattern en plusieurs morceaux et les mettre dans les process suivants" 
-        */
+        
         while (count_squared_len > sls_by_process * (j + 1) && j < size - 1) {
-#if ETIENNE_DEBUG
-            if (rank == 0) {
-                printf("sent 0 patterns to process %d\n", j);
-            }
-#endif
+
             sendcounts[j] = 0;
             displs[j+1] = i+1;
             j++;
@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
 
     duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
 
-    printf("APM done in %lf s\n", duration);
+    printf("APM done in %lf s on device %d\n", duration, rank);
 
     /*****
      * END MAIN LOOP
