@@ -13,6 +13,10 @@
 
 #define APM_DEBUG 0
 
+void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
+void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
+void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
+
 char *read_input_file(char *filename, int *size) {
     char *buf;
     off_t fsize;
@@ -98,7 +102,7 @@ int main(int argc, char **argv) {
     char *filename;
     int approx_factor = 0;
     int nb_patterns = 0;
-    int i, j;
+    int i ;
     char *buf;
     struct timeval t1, t2;
     double duration;
@@ -176,8 +180,30 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
     /* Check each pattern one by one */
-#pragma omp parallel for
+    cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+
+
+    /* Timer stop */
+    gettimeofday(&t2, NULL);
+
+    duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
+
+    printf("APM done in %lf s\n", duration);
+
+    /*****
+     * END MAIN LOOP
+     ******/
+
     for (i = 0; i < nb_patterns; i++) {
+        printf("Number of matches for pattern <%s>: %d\n", pattern[i],
+               n_matches[i]);
+    }
+
+    return 0;
+}
+
+void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    for (int i = 0; i < nb_patterns; i++) {
         // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
         int size_pattern = strlen(pattern[i]);
         int *column;
@@ -194,7 +220,7 @@ int main(int argc, char **argv) {
         // }
 
         /* Traverse the input data up to the end of the file */
-        for (j = 0; j < n_bytes; j++) {
+        for (int j = 0; j < n_bytes; j++) {
             int distance = 0;
             int size;
 
@@ -218,22 +244,97 @@ int main(int argc, char **argv) {
 
         free(column);
     }
-
-    /* Timer stop */
-    gettimeofday(&t2, NULL);
-
-    duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
-
-    printf("APM done in %lf s\n", duration);
-
-    /*****
-     * END MAIN LOOP
-     ******/
-
-    for (i = 0; i < nb_patterns; i++) {
-        printf("Number of matches for pattern <%s>: %d\n", pattern[i],
-               n_matches[i]);
-    }
-
-    return 0;
 }
+
+void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    for (int i = 0; i < nb_patterns; i++) {
+        // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
+        int size_pattern = strlen(pattern[i]);
+        int *column;
+
+        /* Initialize the number of matches to 0 */
+        n_matches[i] = 0;
+
+        // if (column == NULL) {
+        //     fprintf(stderr,
+        //             "Error: unable to allocate memory for column (%ldB)\n",
+        //             (size_pattern + 1) * sizeof(int));
+        //     return 1;
+        // }
+
+        /* Traverse the input data up to the end of the file */
+# pragma omp parallel for private(column) reduction(+:n_matches[i])
+        for (int j = 0; j < n_bytes; j++) {
+            // on est obligé d'allouer l'espace pour la column plus tard pour la rendre privée
+            column = (int *)malloc((size_pattern + 1) * sizeof(int));
+            int distance = 0;
+            int size;
+
+#if APM_DEBUG
+            if (j % 100 == 0) {
+                printf("Procesing byte %d (out of %d)\n", j, n_bytes);
+            }
+#endif
+
+            size = size_pattern;
+            if (n_bytes - j < size_pattern) {
+                size = n_bytes - j;
+            }
+
+            distance = levenshtein(pattern[i], &buf[j], size, column);
+
+            if (distance <= approx_factor) {
+                n_matches[i]++;
+            }
+            free(column);
+        }
+
+    }
+}
+
+
+void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    #pragma omp parallel for
+    for (int i = 0; i < nb_patterns; i++) {
+        // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
+        int size_pattern = strlen(pattern[i]);
+        int *column;
+
+        /* Initialize the number of matches to 0 */
+        n_matches[i] = 0;
+
+        column = (int *)malloc((size_pattern + 1) * sizeof(int));
+        // if (column == NULL) {
+        //     fprintf(stderr,
+        //             "Error: unable to allocate memory for column (%ldB)\n",
+        //             (size_pattern + 1) * sizeof(int));
+        //     return 1;
+        // }
+
+        /* Traverse the input data up to the end of the file */
+        for (int j = 0; j < n_bytes; j++) {
+            int distance = 0;
+            int size;
+
+#if APM_DEBUG
+            if (j % 100 == 0) {
+                printf("Procesing byte %d (out of %d)\n", j, n_bytes);
+            }
+#endif
+
+            size = size_pattern;
+            if (n_bytes - j < size_pattern) {
+                size = n_bytes - j;
+            }
+
+            distance = levenshtein(pattern[i], &buf[j], size, column);
+
+            if (distance <= approx_factor) {
+                n_matches[i]++;
+            }
+        }
+
+        free(column);
+    }
+}
+
