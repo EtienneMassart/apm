@@ -11,11 +11,14 @@
 #include <unistd.h>
 #include <omp.h>
 
+#include <cuda_runtime.h>
+
 #define APM_DEBUG 0
 
 void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
+void cas1_Cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 
 char *read_input_file(char *filename, int *size) {
     char *buf;
@@ -78,7 +81,7 @@ char *read_input_file(char *filename, int *size) {
 #define MIN3(a, b, c) \
     ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
 
-int levenshtein(char *s1, char *s2, int len, int *column) {
+__host__ __device__ int levenshtein(char *s1, char *s2, int len, int *column) {
     unsigned int x, y, lastdiag, olddiag;
 
     for (y = 1; y <= len; y++) {
@@ -180,7 +183,8 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
     /* Check each pattern one by one */
-    cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    // cas0_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    cas1_Cuda(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
 
 
     /* Timer stop */
@@ -335,6 +339,61 @@ void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
         }
 
         free(column);
+    }
+}
+
+
+__global__ void kernel_calcul(int n_bytes, int size_pattern, int approx_factor, char * buf, char * pattern, int * distances){
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_bytes){
+        int size;
+
+        size = size_pattern;
+        if (n_bytes - i < size_pattern) {
+            size = n_bytes - i;
+        }
+        int * column = (int *)malloc((size_pattern + 1) * sizeof(int));
+
+        distances[i] = levenshtein(pattern, &buf[i], size, column);
+        free(column);
+    }
+}
+
+
+void cas1_Cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    for (int i = 0; i < nb_patterns; i++) {
+        // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
+        int size_pattern = strlen(pattern[i]);
+
+        /* Initialize the number of matches to 0 */
+        n_matches[i] = 0;
+
+        /* Traverse the input data up to the end of the file */
+        int * distances = (int *)malloc(n_bytes * sizeof(int));
+        char * d_buf;
+        char * d_pattern;
+        int * d_distances;
+
+        cudaMalloc((void **) &d_buf, n_bytes * sizeof(char));
+        cudaMalloc((void **) &d_pattern, size_pattern * sizeof(char));
+        cudaMalloc((void **) &d_distances, n_bytes * sizeof(int));
+        cudaMemcpy(d_buf, buf, n_bytes * sizeof(char), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_pattern, pattern[i], size_pattern * sizeof(char), cudaMemcpyHostToDevice);
+
+        dim3 Db = dim3(256, 1, 1);
+        dim3 Dg = dim3((n_bytes + Db.x - 1) / Db.x, 1, 1);
+
+        kernel_calcul<<<Dg,Db>>>(n_bytes, size_pattern, approx_factor, d_buf, d_pattern, d_distances);
+
+        cudaMemcpy(distances, d_distances, n_bytes * sizeof(int), cudaMemcpyDeviceToHost);
+
+        for (int j = 0; j < n_bytes; j++) {
+            if (distances[j] <= approx_factor) {
+                n_matches[i]++;
+            }
+        }
+
+        // free(column);
     }
 }
 

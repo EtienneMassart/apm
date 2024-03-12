@@ -2,11 +2,11 @@ SRC_DIR=src
 HEADER_DIR=include
 OBJ_DIR=obj
 
-CC=gcc 
-CFLAGS=-O3 -I$(HEADER_DIR) -Wall -fopenmp
+CC=nvcc 
+CFLAGS=-O3 -I$(HEADER_DIR) -Xcompiler -Wall -Xcompiler -fopenmp
 LDFLAGS=
 
-SRC= apm.c
+SRC= apm.cu
 
 OBJ= $(OBJ_DIR)/apm.o
 
@@ -15,7 +15,7 @@ all: $(OBJ_DIR) apm
 $(OBJ_DIR):
 	mkdir $(OBJ_DIR)
 
-$(OBJ_DIR)/%.o : $(SRC_DIR)/%.c
+$(OBJ_DIR)/%.o : $(SRC_DIR)/%.cu
 	$(CC) $(CFLAGS) -c -o $@ $^
 
 apm:$(OBJ)
