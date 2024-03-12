@@ -23,3 +23,4 @@ apm:$(OBJ)
 
 clean:
 	rm -f apm $(OBJ) ; rmdir $(OBJ_DIR)
+	rm *.out
