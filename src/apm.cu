@@ -183,7 +183,7 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
     /* Check each pattern one by one */
-    // cas0_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    // cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
     cas1_Cuda(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
 
 
