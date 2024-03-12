@@ -1,1 +1,7 @@
+.*
+!.gitignore
+obj/
+Makefile
 *.out
+apm
+*.bash
