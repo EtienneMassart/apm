@@ -22,6 +22,16 @@ Si le nombre de patterns est élevé par rapport à la taille de la séquence, i
 Tant que le désequilibre des longueurs des patterns ne cause pas une nécessité de répartir un pattern sur plusieurs machines cette approche fonctionne, mais comme le nombre de machines est supposé faible par rapport à la taille de la séquence (voir cas non-traités), cela ne devrait pas arriver.
 
 
+# 2 Arbre décisionnel :
+- si on est dans un cluster mpi :
+répartir entre les noeuds
+sinon ne rien faire
+- répartir les paterns si ça vaut le coup
+- Pour chaque noeud :
+regarder si on a une carte graphique et que c'est suffisament lourd pour que ça valle le coup (faire une règle sur la taille du texte et la taille des paterns)
+
+
+
 
 
 
