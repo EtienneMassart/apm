@@ -1,1 +1,3 @@
 *.out
+apm
+obj/
