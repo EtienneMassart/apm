@@ -6,11 +6,13 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <mpi.h>
 #include <assert.h>
+
 
 #define APM_DEBUG 0
 #define ETIENNE_DEBUG 0
@@ -95,52 +97,12 @@ int levenshtein(char *s1, char *s2, int len, int *column) {
     return (column[len]);
 }
 
-int main(int argc, char **argv) {
-    char **pattern;
-    char *filename;
-    int *pattern_len_squared; // tableau contenant la taille au carré de chaque patern
-    int approx_factor = 0;
-    int nb_patterns = 0;
-    int sum_len_squared = 0; // somme des tailles au carré des paterns
-    int i, j;
-    char *buf;
+int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank, 
+            int * distribution, int * sendcounts, int * displs, int * reception) {
+    int i,j;
     struct timeval t1, t2;
-    double duration;
-    int n_bytes;
-    int *n_matches;
-    int rank, size;
-
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    /* Check number of arguments */
-    if (argc < 4) {
-        printf(
-            "Usage: %s approximation_factor "
-            "dna_database pattern1 pattern2 ...\n",
-            argv[0]);
-        return 1;
-    }
-
-    /* Get the distance factor */
-    approx_factor = atoi(argv[1]);
-
-    /* Grab the filename containing the target text */
-    filename = argv[2];
-
-    /* Get the number of patterns that the user wants to search for */
-    nb_patterns = argc - 3;
-
-    /* Fill the pattern array */
-    pattern = (char **)malloc(nb_patterns * sizeof(char *));
-    if (pattern == NULL) {
-        fprintf(stderr, "Unable to allocate array of pattern of size %d\n",
-                nb_patterns);
-        return 1;
-    }
-
-
+    int *pattern_len_squared; // tableau contenant la taille au carré de chaque patern
+    int sum_len_squared = 0; // somme des tailles au carré des paterns
     pattern_len_squared = (int *)malloc(nb_patterns * sizeof(int));
 
     /* Grab the patterns */
@@ -169,24 +131,6 @@ int main(int argc, char **argv) {
 
     int sls_by_process = sum_len_squared / size;
 
-    printf(
-        "Approximate Pattern Mathing: "
-        "looking for %d pattern(s) in file %s w/ distance of %d\n",
-        nb_patterns, filename, approx_factor);
-
-    buf = read_input_file(filename, &n_bytes);
-    if (buf == NULL) {
-        return 1;
-    }
-
-    /* Allocate the array of matches */
-    n_matches = (int *)malloc(nb_patterns * sizeof(int));
-    if (n_matches == NULL) {
-        fprintf(stderr, "Error: unable to allocate memory for %ldB\n",
-                nb_patterns * sizeof(int));
-        return 1;
-    }
-
     /*****
      * BEGIN MAIN LOOP
      ******/
@@ -195,12 +139,7 @@ int main(int argc, char **argv) {
     gettimeofday(&t1, NULL);
 
 
-    int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
-    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
-    int * displs = (int *)malloc(size * sizeof(int));
-
-    /* Répartition du nombre de patterns entre les process 
-    Peut être amélioré en prenant en compte la taille des paterns */
+    /* Répartition des patterns entre les process en prenant en compte leur taille */
 
     int count_squared_len = 0;
     displs[0] = 0;
@@ -213,13 +152,7 @@ int main(int argc, char **argv) {
         assert (j < size), "N'a pas réparti tous les patterns entre les process\n";
         count_squared_len += pattern_len_squared[i];
 
-#if ETIENNE_DEBUG
-        if (rank == 0) {
-            printf("count_squared_len = %d after pattern %d\n", count_squared_len, i);
-        }
-#endif
-
-        if (count_squared_len > sls_by_process * (j + 1) || i == nb_patterns - 1){
+        if (count_squared_len >= sls_by_process * (j + 1) || i == nb_patterns - 1){
             sendcounts[j] = i + 1  - displs[j];
             if (sendcounts[j] > max_receive) {
                 max_receive = sendcounts[j];
@@ -227,33 +160,20 @@ int main(int argc, char **argv) {
             if (j < size - 1) {
                 displs[j+1] = i+1;
             }
-
-#if ETIENNE_DEBUG
-            if (rank == 0) {
-                printf("sent patterns %d to %d to process %d\n", displs[j], i+1, j);
-            }     
-#endif
             j++;
 
         }
-
-        /* 
-        * En gros si on a un gros pattern qui fait beaucoup grandir la somme des carres, on le met tout seul dans un process et on met rien dans les process suivants
-        * Il faut remplacer "ne rien mettre" par "couper le gros pattern en plusieurs morceaux et les mettre dans les process suivants" 
-        */
-        while (count_squared_len > sls_by_process * (j + 1) && j < size - 1) {
-#if ETIENNE_DEBUG
-            if (rank == 0) {
-                printf("sent 0 patterns to process %d\n", j);
-            }
-#endif
+        
+        while (count_squared_len >= sls_by_process * (j + 1) && j < size) {
             sendcounts[j] = 0;
-            displs[j+1] = i+1;
+            if (j < size - 1) {
+                displs[j+1] = i+1;
+            }
             j++;
         }
     }
 
-    int * reception = (int *)malloc(max_receive * sizeof(int));
+    // *reception = (int *)malloc(max_receive * sizeof(int));
 
     if (rank == 0) {
         for (i = 0; i < size; i++) {
@@ -264,11 +184,6 @@ int main(int argc, char **argv) {
 
 
     MPI_Scatterv(distribution, sendcounts, displs, MPI_INT, reception, sendcounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
-#if ETIENNE_DEBUG
-    for (i = 0; i < sendcounts[rank]; i++) {
-        printf("tableau[%d] envoyé au rank %d = %d\n", i, rank, reception[i]);
-    }
-#endif
     /* Check each pattern one by one */
     for (i = 0; i < sendcounts[rank]; i++) {
         int size_pattern = strlen(pattern[reception[i]]);
@@ -314,13 +229,89 @@ int main(int argc, char **argv) {
     /* Timer stop */
     gettimeofday(&t2, NULL);
 
-    duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
+    double duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
 
     printf("APM done in %lf s\n", duration);
 
     /*****
      * END MAIN LOOP
      ******/
+    
+
+    return 0;
+}
+
+
+int main(int argc, char **argv) {
+    char **pattern;
+    char *filename;
+    int approx_factor = 0;
+    int nb_patterns = 0;
+    int i;
+    char *buf;
+    int n_bytes;
+    int *n_matches;
+    int rank, size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    /* Check number of arguments */
+    if (argc < 4) {
+        printf(
+            "Usage: %s approximation_factor "
+            "dna_database pattern1 pattern2 ...\n",
+            argv[0]);
+        return 1;
+    }
+
+    /* Get the distance factor */
+    approx_factor = atoi(argv[1]);
+
+    /* Grab the filename containing the target text */
+    filename = argv[2];
+
+    /* Get the number of patterns that the user wants to search for */
+    nb_patterns = argc - 3;
+
+    int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
+    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
+    int * displs = (int *)malloc(size * sizeof(int));
+    int * reception = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns reçus par chaque process
+
+    printf(
+        "Approximate Pattern Matching: "
+        "looking for %d pattern(s) in file %s w/ distance of %d\n",
+        nb_patterns, filename, approx_factor);
+
+    buf = read_input_file(filename, &n_bytes);
+    if (buf == NULL) {
+        return 1;
+    }
+
+    /* Allocate the array of matches */
+    n_matches = (int *)malloc(nb_patterns * sizeof(int));
+    if (n_matches == NULL) {
+        fprintf(stderr, "Error: unable to allocate memory for %ldB\n",
+                nb_patterns * sizeof(int));
+        return 1;
+    }
+
+
+    /* Fill the pattern array */
+    pattern = (char **)malloc(nb_patterns * sizeof(char *));
+    if (pattern == NULL) {
+        fprintf(stderr, "Unable to allocate array of pattern of size %d\n",
+                nb_patterns);
+        return 1;
+    }
+
+    // THIS IS WHERE CASE 2 STARTS
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    if (true) {
+        case2(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank, distribution, sendcounts, displs, reception);
+    }
 
     for (i = 0; i < sendcounts[rank]; i++) {
         printf("Number of matches for pattern <%s>: %d\n", pattern[reception[i]],

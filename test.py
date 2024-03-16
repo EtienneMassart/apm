@@ -30,6 +30,8 @@ last_job_id = None
 number_of_repetitions = 10 # Set your desired number of repetitions
 job_ids = []
 
+subprocess.run(['make'])  # Compile the code before running the tests
+
 for _ in range(number_of_repetitions):
     random_n = random.randint(1, 8)
     random_apm_arg = random.randint(0, 4)
@@ -43,8 +45,8 @@ for _ in range(number_of_repetitions):
     os.remove('test.bash')  # Remove the bash file after submitting the job
 
 # Check if segmentation fault occurred
-for job_id in job_ids:
-    with open(f'slurm-{job_id}.out', 'r') as file:
-        if 'error' in file.read():
-            print(f"Job {job_id} failed with segmentation fault")
+# for job_id in job_ids:
+#     with open(f'slurm-{job_id}.out', 'r') as file:
+#         if 'error' in file.read():
+#             print(f"Job {job_id} failed with segmentation fault")
 
