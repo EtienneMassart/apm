@@ -19,6 +19,7 @@ void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
 void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 void cas1_Cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
+void cas0_MPI(char ** argv, int nb_patterns, int n_bytes, int approx_factor, char * buf, int * n_matches);
 
 char *read_input_file(char *filename, int *size) {
     char *buf;
@@ -105,12 +106,15 @@ int main(int argc, char **argv) {
     char *filename;
     int approx_factor = 0;
     int nb_patterns = 0;
-    int i ;
+    int i;
     char *buf;
-    struct timeval t1, t2;
-    double duration;
     int n_bytes;
     int *n_matches;
+    int rank, size;
+
+    // MPI_Init(&argc, &argv);
+    // MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     /* Check number of arguments */
     if (argc < 4) {
@@ -130,35 +134,13 @@ int main(int argc, char **argv) {
     /* Get the number of patterns that the user wants to search for */
     nb_patterns = argc - 3;
 
-    /* Fill the pattern array */
-    pattern = (char **)malloc(nb_patterns * sizeof(char *));
-    if (pattern == NULL) {
-        fprintf(stderr, "Unable to allocate array of pattern of size %d\n",
-                nb_patterns);
-        return 1;
-    }
-
-    /* Grab the patterns */
-    for (i = 0; i < nb_patterns; i++) {
-        int l;
-
-        l = strlen(argv[i + 3]);
-        if (l <= 0) {
-            fprintf(stderr, "Error while parsing argument %d\n", i + 3);
-            return 1;
-        }
-
-        pattern[i] = (char *)malloc((l + 1) * sizeof(char));
-        if (pattern[i] == NULL) {
-            fprintf(stderr, "Unable to allocate string of size %d\n", l);
-            return 1;
-        }
-
-        strncpy(pattern[i], argv[i + 3], (l + 1));
-    }
+    // int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
+    // int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
+    // int * displs = (int *)malloc(size * sizeof(int));
+    // int * reception = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns reçus par chaque process
 
     printf(
-        "Approximate Pattern Mathing: "
+        "Approximate Pattern Matching: "
         "looking for %d pattern(s) in file %s w/ distance of %d\n",
         nb_patterns, filename, approx_factor);
 
@@ -175,6 +157,45 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    // THIS IS WHERE CASE 2 STARTS
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    if (true) {
+        cas0_MPI(argv, nb_patterns, n_bytes, approx_factor, buf, n_matches);
+    }
+
+    // MPI_Finalize();
+
+    return 0;
+}
+
+
+
+void cas0_MPI(char** argv, int nb_patterns, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    struct timeval t1, t2;
+    double duration;
+    /* Fill the pattern array */
+    char ** pattern = (char **)malloc(nb_patterns * sizeof(char *));
+    if (pattern == NULL) {
+        fprintf(stderr, "Unable to allocate array of pattern of size %d\n",
+                nb_patterns);
+    }
+    /* Grab the patterns */
+    for (int i = 0; i < nb_patterns; i++) {
+        int l;
+
+        l = strlen(argv[i + 3]);
+        if (l <= 0) {
+            fprintf(stderr, "Error while parsing argument %d\n", i + 3);
+        }
+
+        pattern[i] = (char *)malloc((l + 1) * sizeof(char));
+        if (pattern[i] == NULL) {
+            fprintf(stderr, "Unable to allocate string of size %d\n", l);
+        }
+
+        strncpy(pattern[i], argv[i + 3], (l + 1));
+    }
+    
     /*****
      * BEGIN MAIN LOOP
      ******/
@@ -184,7 +205,7 @@ int main(int argc, char **argv) {
 
     /* Check each pattern one by one */
     // cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
-    cas0_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    cas1_Cuda(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
 
 
     /* Timer stop */
@@ -198,12 +219,11 @@ int main(int argc, char **argv) {
      * END MAIN LOOP
      ******/
 
-    for (i = 0; i < nb_patterns; i++) {
+    for (int i = 0; i < nb_patterns; i++) {
         printf("Number of matches for pattern <%s>: %d\n", pattern[i],
                n_matches[i]);
     }
-
-    return 0;
+    
 }
 
 void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
