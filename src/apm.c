@@ -11,11 +11,14 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <mpi.h>
+#include "aux.h"
 #include <assert.h>
 
 
 #define APM_DEBUG 0
 #define ETIENNE_DEBUG 0
+
+#define case 2
 
 char *read_input_file(char *filename, int *size) {
     char *buf;
@@ -97,8 +100,107 @@ int levenshtein(char *s1, char *s2, int len, int *column) {
     return (column[len]);
 }
 
-int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank, 
-            int * distribution, int * sendcounts, int * displs, int * reception) {
+
+/*
+Cas quand il n'y a qu'un seul ordinateur donc qu'on n'utilise pas de MPI
+*/
+int case0(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank);
+
+/*
+Cas quand on a plusieurs ordinateur et un long texte par rapport au nombre de patern (en gros très peu de paterns)
+*/
+int case1(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank) {
+    int * distribution = (int *)malloc(n_bytes * sizeof(int)); // contient les numéros des paterns
+    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
+    int * displs = (int *)malloc(size * sizeof(int));
+
+    int i;
+    struct timeval t1, t2;
+
+    /* Grab the patterns */
+    for (i = 0; i < nb_patterns; i++) {
+        int l;
+
+        l = strlen(argv[i + 3]);
+        if (l <= 0) {
+            fprintf(stderr, "Error while parsing argument %d\n", i + 3);
+            return 1;
+        }
+
+        pattern[i] = (char *)malloc((l + 1) * sizeof(char));
+        if (pattern[i] == NULL) {
+            fprintf(stderr, "Unable to allocate string of size %d\n", l);
+            return 1;
+        }
+
+        strncpy(pattern[i], argv[i + 3], (l + 1));
+    }
+
+    /*****
+     * BEGIN MAIN LOOP
+     ******/
+
+    /* Timer start */
+    gettimeofday(&t1, NULL);
+
+    for(i = 0; i<n_bytes; i++) {
+        distribution[i] = i;
+    }
+
+    for(i = 0; i<n_bytes%size; i++) {
+        sendcounts[i] = n_bytes/size + 1;
+        displs[i] = i * (n_bytes/size + 1);
+    }
+    for(i = n_bytes%size; i<size; i++) {
+        sendcounts[i] = n_bytes/size;
+        displs[i] = i * (n_bytes/size) + n_bytes%size;
+    }
+
+    int *reception = (int *)malloc((n_bytes/size + 1) * sizeof(int));
+
+    MPI_Scatterv(distribution, sendcounts, displs, MPI_INT, reception, sendcounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
+
+    // for every pattern in the pattern array look for matches in starting at position reception[i]
+    cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+
+    int * total_matches = (int *)malloc(nb_patterns * sizeof(int));
+
+
+
+    // Perform the MPI_Allreduce operation to sum up all n_matches across all ranks
+    MPI_Reduce(n_matches, total_matches, nb_patterns, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    
+
+    /* Timer stop */
+    gettimeofday(&t2, NULL);
+
+    double duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
+
+    printf("APM done in %lf s\n", duration);
+
+    /*****
+     * END MAIN LOOP
+     ******/
+
+    if (rank == 0) {
+        for (i = 0; i < nb_patterns; i++) {
+            printf("Number of matches for pattern <%s>: %d\n", pattern[i],
+                total_matches[i]);
+        }
+    }
+    return 0;
+}
+
+
+/*
+Cas où il y a plusieurs ordinateurs et plusieurs paterns
+*/
+int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank) {
+
+    int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
+    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
+    int * displs = (int *)malloc(size * sizeof(int));
+
     int i,j;
     struct timeval t1, t2;
     int *pattern_len_squared; // tableau contenant la taille au carré de chaque patern
@@ -173,7 +275,7 @@ int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
         }
     }
 
-    // *reception = (int *)malloc(max_receive * sizeof(int));
+    int *reception = (int *)malloc(max_receive * sizeof(int));
 
     if (rank == 0) {
         for (i = 0; i < size; i++) {
@@ -201,27 +303,8 @@ int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
         }
 
         /* Traverse the input data up to the end of the file */
-        for (j = 0; j < n_bytes; j++) {
-            int distance = 0;
-            int size;
-
-#if APM_DEBUG
-            if (j % 100 == 0) {
-                printf("Procesing byte %d (out of %d)\n", j, n_bytes);
-            }
-#endif
-
-            size = size_pattern;
-            if (n_bytes - j < size_pattern) {
-                size = n_bytes - j;
-            }
-
-            distance = levenshtein(pattern[reception[i]], &buf[j], size, column);
-
-            if (distance <= approx_factor) {
-                n_matches[i]++;
-            }
-        }
+        // #pragma omp parallel for
+        cas1_OpenMP_aux(pattern[reception[i]], n_bytes, approx_factor, buf, n_matches, reception[i]);
 
         free(column);
     }
@@ -236,6 +319,11 @@ int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
     /*****
      * END MAIN LOOP
      ******/
+
+    for (i = 0; i < sendcounts[rank]; i++) {
+        printf("Number of matches for pattern <%s>: %d\n", pattern[reception[i]],
+               n_matches[reception[i]]);
+    }
     
 
     return 0;
@@ -247,7 +335,6 @@ int main(int argc, char **argv) {
     char *filename;
     int approx_factor = 0;
     int nb_patterns = 0;
-    int i;
     char *buf;
     int n_bytes;
     int *n_matches;
@@ -274,11 +361,6 @@ int main(int argc, char **argv) {
 
     /* Get the number of patterns that the user wants to search for */
     nb_patterns = argc - 3;
-
-    int * distribution = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns
-    int * sendcounts = (int *)malloc(size * sizeof(int)); // contient le nombre de paterns envoyé à chaque process et sert aussi à calculer le décalage et recvcount = sendcounts[rank]
-    int * displs = (int *)malloc(size * sizeof(int));
-    int * reception = (int *)malloc(nb_patterns * sizeof(int)); // contient les numéros des paterns reçus par chaque process
 
     printf(
         "Approximate Pattern Matching: "
@@ -307,16 +389,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // THIS IS WHERE CASE 2 STARTS
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    if (true) {
-        case2(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank, distribution, sendcounts, displs, reception);
+    if (case == 0) {
+        case0(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
+    }
+    else if (case == 1) {
+        case1(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
+    }
+    else if (case == 2) {
+        case2(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
     }
 
-    for (i = 0; i < sendcounts[rank]; i++) {
-        printf("Number of matches for pattern <%s>: %d\n", pattern[reception[i]],
-               n_matches[i]);
-    }
 
     MPI_Finalize();
 

@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
 
     /* Check each pattern one by one */
     // cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
-    cas1_Cuda(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    cas0_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
 
 
     /* Timer stop */
