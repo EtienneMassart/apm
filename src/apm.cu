@@ -392,8 +392,6 @@ void cas1_Cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor,
                 n_matches[i]++;
             }
         }
-
-        // free(column);
     }
 }
 
