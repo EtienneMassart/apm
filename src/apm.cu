@@ -216,12 +216,6 @@ void cas0_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
         n_matches[i] = 0;
 
         column = (int *)malloc((size_pattern + 1) * sizeof(int));
-        // if (column == NULL) {
-        //     fprintf(stderr,
-        //             "Error: unable to allocate memory for column (%ldB)\n",
-        //             (size_pattern + 1) * sizeof(int));
-        //     return 1;
-        // }
 
         /* Traverse the input data up to the end of the file */
         for (int j = 0; j < n_bytes; j++) {
@@ -258,13 +252,6 @@ void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
 
         /* Initialize the number of matches to 0 */
         n_matches[i] = 0;
-
-        // if (column == NULL) {
-        //     fprintf(stderr,
-        //             "Error: unable to allocate memory for column (%ldB)\n",
-        //             (size_pattern + 1) * sizeof(int));
-        //     return 1;
-        // }
 
         /* Traverse the input data up to the end of the file */
 # pragma omp parallel for private(column) reduction(+:n_matches[i])
@@ -308,12 +295,6 @@ void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
         n_matches[i] = 0;
 
         column = (int *)malloc((size_pattern + 1) * sizeof(int));
-        // if (column == NULL) {
-        //     fprintf(stderr,
-        //             "Error: unable to allocate memory for column (%ldB)\n",
-        //             (size_pattern + 1) * sizeof(int));
-        //     return 1;
-        // }
 
         /* Traverse the input data up to the end of the file */
         for (int j = 0; j < n_bytes; j++) {
