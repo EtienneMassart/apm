@@ -168,65 +168,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-// int main(int argc, char **argv) {
-//     char **pattern;
-//     char *filename;
-//     int approx_factor = 0;
-//     int nb_patterns = 0;
-//     int i ;
-//     char *buf;
-//     struct timeval t1, t2;
-//     double duration;
-//     int n_bytes;
-//     int *n_matches;
 
-//     /* Check number of arguments */
-//     if (argc < 4) {
-//         printf(
-//             "Usage: %s approximation_factor "
-//             "dna_database pattern1 pattern2 ...\n",
-//             argv[0]);
-//         return 1;
-//     }
-
-//     /* Get the distance factor */
-//     approx_factor = atoi(argv[1]);
-
-//     /* Grab the filename containing the target text */
-//     filename = argv[2];
-
-//     /* Get the number of patterns that the user wants to search for */
-//     nb_patterns = argc - 3;
-
-//     /* Fill the pattern array */
-//     pattern = (char **)malloc(nb_patterns * sizeof(char *));
-//     if (pattern == NULL) {
-//         fprintf(stderr, "Unable to allocate array of pattern of size %d\n",
-//                 nb_patterns);
-//         return 1;
-//     }
-
-
-//     printf(
-//         "Approximate Pattern Mathing: "
-//         "looking for %d pattern(s) in file %s w/ distance of %d\n",
-//         nb_patterns, filename, approx_factor);
-
-//     buf = read_input_file(filename, &n_bytes);
-//     if (buf == NULL) {
-//         return 1;
-//     }
-
-//     /* Allocate the array of matches */
-//     n_matches = (int *)malloc(nb_patterns * sizeof(int));
-//     if (n_matches == NULL) {
-//         fprintf(stderr, "Error: unable to allocate memory for %ldB\n",
-//                 nb_patterns * sizeof(int));
-//         return 1;
-//     }
-
-
-// }
 
 void cas0_MPI(char** argv, int nb_patterns, int n_bytes, int approx_factor, char * buf, int * n_matches){
     struct timeval t1, t2;
