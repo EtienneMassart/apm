@@ -13,7 +13,7 @@ SRC= apm.c
 
 OBJ= $(OBJ_DIR)/apm.o
 
-all: $(OBJ_DIR) apm apm_seq
+all: $(OBJ_DIR) apm apm_seq apm_cuda
 
 $(OBJ_DIR):
 	mkdir $(OBJ_DIR)
@@ -21,15 +21,8 @@ $(OBJ_DIR):
 $(OBJ_DIR)/%.o : $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c -o $@ $^
 
-
-# apm:$(OBJ)
-# 	$(CC) $(CFLAGS) -o apm.c aux.c $(OBJ) $(LDFLAGS)
-
-apm_cuda :
-	nvcc -c src/apm_cuda.cu -o obj/apm_cuda.o -Iinclude -O3 -Xcompiler -fopenmp
-
-# apm_autre: apm_cuda
-# 	mpicc src/apm.c src/aux.c -o apm.o -O3 -Iinclude -Wall -fopenmp
+apm_cuda:
+	nvcc src/apm_cuda.cu -o apm_cuda -Iinclude -O3 -Xcompiler -fopenmp
 
 apm :
 	mpicc src/apm.c src/aux.c -o apm -O3 -Iinclude -Wall -fopenmp
