@@ -31,6 +31,6 @@ apm_seq :
 	gcc src/apm_seq.c -o apm_seq -O3 -Iinclude
 
 clean:
-	rm -f apm $(OBJ) ; rmdir $(OBJ_DIR)
+	rm -f apm $(OBJ) ; rm -f -r $(OBJ_DIR)
 out:
 	rm -f *.out

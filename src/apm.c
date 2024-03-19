@@ -16,9 +16,6 @@
 #include <assert.h>
 
 #define APM_DEBUG 0
-#define ETIENNE_DEBUG 0
-
-#define case 0
 
 char *read_input_file(char *filename, int *size)
 {
