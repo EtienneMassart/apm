@@ -12,13 +12,14 @@
 #include <unistd.h>
 #include <mpi.h>
 #include "aux.h"
+#include "apm_cuda.h"
 #include <assert.h>
 
 
 #define APM_DEBUG 0
 #define ETIENNE_DEBUG 0
 
-#define case 2
+#define case 0
 
 char *read_input_file(char *filename, int *size) {
     char *buf;
@@ -104,7 +105,66 @@ int levenshtein(char *s1, char *s2, int len, int *column) {
 /*
 Cas quand il n'y a qu'un seul ordinateur donc qu'on n'utilise pas de MPI
 */
-int case0(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank);
+int case0(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns, int approx_factor, int* n_matches, int size, int rank){
+    int i;
+    struct timeval t1, t2;
+
+    /* Grab the patterns */
+    for (i = 0; i < nb_patterns; i++) {
+        int l;
+
+        l = strlen(argv[i + 3]);
+        if (l <= 0) {
+            fprintf(stderr, "Error while parsing argument %d\n", i + 3);
+            return 1;
+        }
+
+        pattern[i] = (char *)malloc((l + 1) * sizeof(char));
+        if (pattern[i] == NULL) {
+            fprintf(stderr, "Unable to allocate string of size %d\n", l);
+            return 1;
+        }
+
+        strncpy(pattern[i], argv[i + 3], (l + 1));
+    }
+
+    /*****
+     * BEGIN MAIN LOOP
+     ******/
+
+    /* Timer start */
+    gettimeofday(&t1, NULL);
+
+    /* Check each pattern one by one */
+
+    fonction_pour_passer_dans_cuda(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    // if (nb_patterns == 1) {
+    //     printf(" 1 pattern\n");
+    //     cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    // } else {
+    //     printf(" plusieurs patterns\n");
+    //     cas2_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    // }
+
+    /* Timer stop */
+    gettimeofday(&t2, NULL);
+
+    double duration = (t2.tv_sec - t1.tv_sec) + ((t2.tv_usec - t1.tv_usec) / 1e6);
+
+    printf("APM done in %lf s\n", duration);
+
+    /*****
+     * END MAIN LOOP
+     ******/
+
+    for (i = 0; i < nb_patterns; i++) {
+        printf("Number of matches for pattern <%s>: %d\n", pattern[i],
+               n_matches[i]);
+    }
+
+    return 0;
+
+}
 
 /*
 Cas quand on a plusieurs ordinateur et un long texte par rapport au nombre de patern (en gros très peu de paterns)
@@ -161,6 +221,29 @@ int case1(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
     MPI_Scatterv(distribution, sendcounts, displs, MPI_INT, reception, sendcounts[rank], MPI_INT, 0, MPI_COMM_WORLD);
 
     // for every pattern in the pattern array look for matches in starting at position reception[i]
+    for (i = 0; i < nb_patterns; i++) {
+        int size_pattern = strlen(pattern[i]);
+        int *column;
+
+        /* Initialize the number of matches to 0 */
+        n_matches[i] = 0;
+
+        column = (int *)malloc((size_pattern + 1) * sizeof(int));
+        if (column == NULL) {
+            fprintf(stderr,
+                    "Error: unable to allocate memory for column (%ldB)\n",
+                    (size_pattern + 1) * sizeof(int));
+            return 1;
+        }
+
+        /* Traverse the input data up to the end of the file */
+        int début = reception[rank];
+        int fin = reception[rank] + sendcounts[rank];
+        // cas1_OpenMP_aux(début, fin, pattern[i], n_bytes, approx_factor, buf, n_matches, i);
+        cas_rien_aux(début, fin, pattern[i], n_bytes, approx_factor, buf, n_matches, i);
+
+        free(column);
+    }
     cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
 
     int * total_matches = (int *)malloc(nb_patterns * sizeof(int));
@@ -303,8 +386,9 @@ int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
         }
 
         /* Traverse the input data up to the end of the file */
-        // #pragma omp parallel for
-        cas1_OpenMP_aux(pattern[reception[i]], n_bytes, approx_factor, buf, n_matches, reception[i]);
+        printf("rank = %d, reception[%d] = %d\n", rank, i, reception[i]);
+        cas1_OpenMP_aux(0, n_bytes, pattern[reception[i]], n_bytes, approx_factor, buf, n_matches, reception[i]);
+        // cas_rien_aux(0, n_bytes, pattern[reception[i]], n_bytes, approx_factor, buf, n_matches, reception[i]);
 
         free(column);
     }
@@ -321,7 +405,7 @@ int case2(char ** argv, char** pattern, char* buf, int n_bytes, int nb_patterns,
      ******/
 
     for (i = 0; i < sendcounts[rank]; i++) {
-        printf("Number of matches for pattern <%s>: %d\n", pattern[reception[i]],
+        printf("Rank number %d : Number of matches for pattern <%s>: %d\n", rank, pattern[reception[i]],
                n_matches[reception[i]]);
     }
     
@@ -343,6 +427,8 @@ int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    printf("Hello from rank %d of %d\n", rank, size);
 
     /* Check number of arguments */
     if (argc < 4) {

@@ -376,3 +376,12 @@ void cas1_Cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor,
     }
 }
 
+void fonction_pour_passer_dans_cuda(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+    if (nb_patterns == 1) {
+        printf(" 1 pattern\n");
+        cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    } else {
+        printf(" plusieurs patterns\n");
+        cas2_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
+    }
+}

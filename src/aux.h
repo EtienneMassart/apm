@@ -7,7 +7,9 @@ void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
 
 void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches);
 
-void cas1_OpenMP_aux(char * pattern, int n_bytes, int approx_factor, char * buf, int * n_matches, int i);
+void cas1_OpenMP_aux(int début, int fin, char * pattern, int n_bytes, int approx_factor, char * buf, int * n_matches, int i);
+
+void cas_rien_aux(int début, int fin, char * pattern, int n_bytes, int approx_factor, char * buf, int * n_matches, int i);
 
 
 #endif
