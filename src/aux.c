@@ -1,11 +1,15 @@
+#include "aux.h"
+
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <omp.h>
-#include "aux.h"
+
 #include "apm.h"
 
-void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
+// Utilise openmp sur la sequence entière mais le fait pour chaque pattern
+void openmp_sequence(int nb_patterns, char **pattern, int n_bytes,
+                     int approx_factor, char *buf, int *n_matches) {
     for (int i = 0; i < nb_patterns; i++) {
         // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
         int size_pattern = strlen(pattern[i]);
@@ -15,9 +19,10 @@ void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
         n_matches[i] = 0;
 
         /* Traverse the input data up to the end of the file */
-# pragma omp parallel for private(column) reduction(+:n_matches[i])
+#pragma omp parallel for private(column) reduction(+ : n_matches[i])
         for (int j = 0; j < n_bytes; j++) {
-            // on est obligé d'allouer l'espace pour la column plus tard pour la rendre privée
+            // on est obligé d'allouer l'espace pour la column plus tard pour la
+            // rendre privée
             column = (int *)malloc((size_pattern + 1) * sizeof(int));
             int distance = 0;
             int size;
@@ -40,19 +45,21 @@ void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_facto
             }
             free(column);
         }
-
     }
 }
 
-void cas1_OpenMP_aux(int début, int fin, char * pattern, int n_bytes, int approx_factor, char * buf, int * n_matches, int i){
+// Utilise openmp sur la sequence entière mais le fait pour un seul pattern
+void openmp_seq_simple(char *pattern, int n_bytes, int approx_factor, char *buf,
+                       int *n_matches, int i) {
     int size_pattern = strlen(pattern);
     int *column;
 
     /* Initialize the number of matches to 0 */
-    n_matches[i] = 0;        
-# pragma omp parallel for private(column) reduction(+:n_matches[i])
-    for (int j = début; j < fin ; j++) {
-        // on est obligé d'allouer l'espace pour la column plus tard pour la rendre privée
+    n_matches[i] = 0;
+#pragma omp parallel for private(column) reduction(+ : n_matches[i])
+    for (int j = 0; j < n_bytes; j++) {
+        // on est obligé d'allouer l'espace pour la column plus tard pour la
+        // rendre privée
         column = (int *)malloc((size_pattern + 1) * sizeof(int));
         int distance = 0;
         int size;
@@ -77,8 +84,10 @@ void cas1_OpenMP_aux(int début, int fin, char * pattern, int n_bytes, int appro
     }
 }
 
-void cas2_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
-    #pragma omp parallel for
+// Utilise openmp sur les patterns
+void openmp_patterns(int nb_patterns, char **pattern, int n_bytes,
+                     int approx_factor, char *buf, int *n_matches) {
+#pragma omp parallel for
     for (int i = 0; i < nb_patterns; i++) {
         // printf("Processing with OpenMP thread %d\n", omp_get_thread_num());
         int size_pattern = strlen(pattern[i]);
