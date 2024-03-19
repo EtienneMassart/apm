@@ -1,4 +1,4 @@
-all: obj_dir apm apm_seq apm_cuda
+all: clean obj_dir apm apm_seq apm_cuda
 
 obj_dir:
 	mkdir obj
