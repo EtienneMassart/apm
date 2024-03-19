@@ -1,3 +1,6 @@
 *.out
 apm
 obj/
+apm_seq
+apm_cuda
+performances_CUDA.py

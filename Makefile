@@ -1,36 +1,27 @@
-SRC_DIR=src
-HEADER_DIR=include
-OBJ_DIR=obj
+all: clean obj_dir apm apm_seq apm_cuda
 
-CC=mpicc
-CFLAGS=-O3 -I$(HEADER_DIR) -Wall -fopenmp
+obj_dir:
+	mkdir obj
 
-# CC=nvcc
-# CFLAGS=-O3 -I$(HEADER_DIR) -Xcompiler -Wall -Xcompiler -fopenmp
-LDFLAGS= 
+apm_cuda.o:
+	nvcc src/apm_cuda.cu -o obj/apm_cuda.o -Iinclude -O3 -Xcompiler -fopenmp
 
-SRC= apm.c
+apm.o:
+	mpicc src/apm.c src/aux.c -o obj/apm.o -O3 -Iinclude -Wall -fopenmp
 
-OBJ= $(OBJ_DIR)/apm.o
+apm_seq.o:
+	gcc src/apm_seq.c -o obj/apm_seq.o -O3 -Iinclude
 
-all: $(OBJ_DIR) apm apm_seq apm_cuda
-
-$(OBJ_DIR):
-	mkdir $(OBJ_DIR)
-
-$(OBJ_DIR)/%.o : $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) -c -o $@ $^
-
-apm_cuda:
+apm_cuda: apm_cuda.o
 	nvcc src/apm_cuda.cu -o apm_cuda -Iinclude -O3 -Xcompiler -fopenmp
 
-apm :
+apm: apm.o
 	mpicc src/apm.c src/aux.c -o apm -O3 -Iinclude -Wall -fopenmp
 
-apm_seq :
+apm_seq: apm_seq.o
 	gcc src/apm_seq.c -o apm_seq -O3 -Iinclude
 
 clean:
-	rm -f apm $(OBJ) ; rm -f -r $(OBJ_DIR)
+	rm -f apm apm_cuda apm_seq ; rm -f -r obj
 out:
 	rm -f *.out

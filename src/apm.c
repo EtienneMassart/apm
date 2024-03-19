@@ -147,12 +147,10 @@ int case0(char **argv, char **pattern, char *buf, int n_bytes, int nb_patterns, 
 
     if (nb_patterns == 1)
     {
-        printf(" 1 pattern\n");
         cas1_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
     }
     else
     {
-        printf(" plusieurs patterns\n");
         cas2_OpenMP(nb_patterns, pattern, n_bytes, approx_factor, buf, n_matches);
     }
 
@@ -504,26 +502,14 @@ int main(int argc, char **argv)
 
     if (size == 1)
     {
-        if (rank == 0)
-        {
-            printf("Cas 0\n");
-        }
         case0(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
     }
-    else if (size < nb_patterns && n_bytes < 1000000)
+    else if (size * 5 < nb_patterns && n_bytes < 1000000)
     {
-        if (rank == 0)
-        {
-            printf("Cas 2\n");
-        }
         case2(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
     }
     else
     {
-        if (rank == 0)
-        {
-            printf("Cas 1\n");
-        }
         case1(argv, pattern, buf, n_bytes, nb_patterns, approx_factor, n_matches, size, rank);
     }
 
