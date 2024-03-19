@@ -4,8 +4,6 @@
 #include <omp.h>
 #include "aux.h"
 #include "apm.h"
-#include "apm_cuda.h"
-
 
 void cas1_OpenMP(int nb_patterns, char ** pattern, int n_bytes, int approx_factor, char * buf, int * n_matches){
     for (int i = 0; i < nb_patterns; i++) {

@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <mpi.h>
 #include "aux.h"
-#include "apm_cuda.h"
 #include <assert.h>
 
 #define APM_DEBUG 0
