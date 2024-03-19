@@ -94,9 +94,6 @@ void cas1_OpenMP_aux(int début, int fin, char * pattern, int n_bytes, int appro
     int size_pattern = strlen(pattern);
     int *column;
 
-    printf("patern en ce moment = %s\n", pattern);
-    printf("int i = %d\n", i);     
-
     /* Initialize the number of matches to 0 */
     n_matches[i] = 0;        
 # pragma omp parallel for private(column) reduction(+:n_matches[i])
@@ -124,7 +121,6 @@ void cas1_OpenMP_aux(int début, int fin, char * pattern, int n_bytes, int appro
         }
         free(column);
     }
-    printf("n_matches[i] = %d\n", n_matches[i]);
 }
 
 void cas_rien_aux(int début, int fin, char * pattern, int n_bytes, int approx_factor, char * buf, int * n_matches, int i){
