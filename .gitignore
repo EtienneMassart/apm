@@ -1,4 +1,4 @@
 *.out
 apm
 obj/
-apm_cuda
+apm_seq
